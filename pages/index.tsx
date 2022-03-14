@@ -1,9 +1,96 @@
 import type { NextPage } from 'next'
 import Head from 'next/head'
-import Image from 'next/image'
+import { useEffect, useState } from 'react'
 import styles from '../styles/Home.module.css'
+import Moralis from "moralis"
+import { web3 } from "../web3"
+import { ethers } from "ethers"
+
+declare global {
+  interface Window { ethereum: any; }
+}
 
 const Home: NextPage = () => {
+
+  const [objectType, setObjectType] = useState("");
+  const [objectRank, setObjectRank] = useState("");
+  const [damagePoints, setDamagePoints] = useState("");
+  const [coupon, setCoupon] = useState("");
+
+  async function loginByMoralis(){
+    Moralis.Web3.enableWeb3().then(async function (){
+        await Moralis.switchNetwork("0x2A");
+    });
+  }
+
+  async function handleCreateCouponWithoutEIP() {
+      const couponObject = {
+        objectType,
+        damagePoints
+      };
+      const hash = ethers.utils.hashMessage(JSON.stringify(couponObject));
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      const signer = provider.getSigner();
+      // Método signMessage funciona de maneira similar ao método personal_sign e 
+      // adiciona o prefixo "\x19Ethereum Signed Message:\n32"
+      // a mensagem assinada. Padrão EIP-191.
+      const signature = await signer.signMessage(hash);
+      const coupon = hash + signature;
+      return coupon;
+  }
+
+  async function handleCreateCouponWithEIP712() {
+    const domain = {
+      name: 'OpenSea',
+      chainId: 4,
+      verifyingContract: "0x5b48940830c302D15D011Ed9f10c09A178911345",
+      version: "1"
+    };
+    const types = { 
+      Coupon: [
+        { name: "objectType", type: "string"},
+        { name: "damagePoints", type: "string"}
+      ]
+    };
+    const couponObject = {
+      objectType,
+      damagePoints
+    };
+    const hash = ethers.utils.hashMessage(JSON.stringify(couponObject));
+    const provider = new ethers.providers.Web3Provider(window.ethereum);
+    const signer = provider.getSigner();
+    const signature = await signer._signTypedData(domain, types, couponObject);
+    const coupon = hash + signature;
+    return coupon;
+  }
+
+  async function handleCreateCouponWithMoralis() {
+    const couponObject = {
+      objectType,
+      damagePoints
+    };
+    const ethers = Moralis.web3Library;
+    const hash = ethers.utils.hashMessage(JSON.stringify(couponObject));
+    // Método personal_sign adiciona o prefixo "\x19Ethereum Signed Message:\n32"
+    // a mensagem assinada. Padrão EIP-191.
+    const signature = await window.ethereum.request({
+      method: "personal_sign",
+      params: [hash, window.ethereum.selectedAddress],
+    });
+    const coupon = hash + signature;
+    return coupon;
+  }
+
+  async function handleCreateCoupon() {
+    const coupon = await handleCreateCouponWithoutEIP();
+    const coupon2 = await handleCreateCouponWithEIP712();
+    const coupon3 = await handleCreateCouponWithMoralis();
+    console.log("Cupom sem EIP:", coupon);
+    console.log("Cupom com EIP:", coupon2);
+    console.log("Cupom com Moralis:", coupon3);
+    setCoupon(coupon);
+  }
+
   return (
     <div className={styles.container}>
       <Head>
@@ -13,60 +100,14 @@ const Home: NextPage = () => {
       </Head>
 
       <main className={styles.main}>
-        <h1 className={styles.title}>
-          Welcome to <a href="https://nextjs.org">Next.js!</a>
-        </h1>
-
-        <p className={styles.description}>
-          Get started by editing{' '}
-          <code className={styles.code}>pages/index.tsx</code>
-        </p>
-
-        <div className={styles.grid}>
-          <a href="https://nextjs.org/docs" className={styles.card}>
-            <h2>Documentation &rarr;</h2>
-            <p>Find in-depth information about Next.js features and API.</p>
-          </a>
-
-          <a href="https://nextjs.org/learn" className={styles.card}>
-            <h2>Learn &rarr;</h2>
-            <p>Learn about Next.js in an interactive course with quizzes!</p>
-          </a>
-
-          <a
-            href="https://github.com/vercel/next.js/tree/canary/examples"
-            className={styles.card}
-          >
-            <h2>Examples &rarr;</h2>
-            <p>Discover and deploy boilerplate example Next.js projects.</p>
-          </a>
-
-          <a
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-            className={styles.card}
-          >
-            <h2>Deploy &rarr;</h2>
-            <p>
-              Instantly deploy your Next.js site to a public URL with Vercel.
-            </p>
-          </a>
-        </div>
+        <input type="text" placeholder="Tipo" value={objectType} onChange={e => setObjectType(e.target.value)}/>
+        <input type="text" placeholder="Rank" value={objectRank} onChange={e => setObjectRank(e.target.value)}/>
+        <input type="text" placeholder="Dano" value={damagePoints} onChange={e => setDamagePoints(e.target.value)}/>
+        <input type="text" placeholder="Cupom" value={coupon} onChange={e => setCoupon(e.target.value)}/>
+        <button onClick={handleCreateCoupon}>Gerar cupom</button>
       </main>
-
-      <footer className={styles.footer}>
-        <a
-          href="https://vercel.com?utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Powered by{' '}
-          <span className={styles.logo}>
-            <Image src="/vercel.svg" alt="Vercel Logo" width={72} height={16} />
-          </span>
-        </a>
-      </footer>
     </div>
   )
 }
 
-export default Home
+export default Home;
